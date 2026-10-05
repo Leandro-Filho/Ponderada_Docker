@@ -22,16 +22,30 @@ outro ponto que mudei de ideia: o gpt tinha nos dado um dataset dp Fed, que alte
 
 3. preparar o ambiente
 
-vou começar a criar um .venv para as bibliotecas que precisaremos nesse projeto 
+vou começar a criar um .venv para as bibliotecas que precisaremos nesse projeto, já que meu computador é linux, então não podemos rodar o projeto sem .venv
 
 gerei a limpeza dos dados na pasta dados e preparar.py. nela, está sendo feita a retirada de duplicadas, normalizando as colunas, separando quais colunas podem ser possíveis vazamentos para o modelo, tirando nulos, etc. Ou seja, uma limpeza e preparação dos dados completa.
 
 além disso, gerei  diagrama uml de como deverá ser feita a aplicação: primeiro fazemos um post para pegar a predição do bitcoin e ele bate na api e verifica se os dados são suficientes ou não para isso, depois ele manda para a fetures.py calcular os preços dos último dia e retorna para a api. depois disso, a api manda para o modelo.joblib para prever o valor e ele retorna o resultado para a api que manda de volta para o cliente o resultado 200 e suas predições. aqui, precisei usar o claude tanto para gerar o diagrama quanto para me ajudar a fazer a estrutura, já que para mim fazia sentido colocar no container a preparação, mas com algumas conversas com ele, decidi manter com dois containers: um com o treino e outro com a api
 
+a conversa entre os containers funcionará da seguinte forma: o dataset.csv está no meu computador e ele irá para o container do treino , com o treno feito, ele irá para o modelo.joblib e metricas.json e volta novamente para o docker engine para o container da api que manda o resultado previsto para a porta 8000, podendo ser acessada pelo curl por http
+
 Próximo passo, será fazer o modelo.
 
 4. fazer o código do modelo
 
+com ajuda do claude, estamos fazendo o modelo em si, quen usou até o naive para ver se o modelo será adequado com o que temos.Como tenho pouco tempoo, vou deixar esse código e ver como ele se desempenha. Ele será rodado da seguinte forma:
+
+
+```bash
+pip install -r treino/requirements.txt
+python dados/preparar.py                              # limpeza
+DADOS=dados/dataset.csv ARTEFATOS=artefatos \
+  python treino/treinar.py                            # treino → modelo.joblib
+pytest testes/ -v                                     # 14 testes
+```
+
+o arquivo gerado usa a biblioteca scikit-learn para pegar os modelos e fazemos uma comparação de 3 modelos para ver qual se saí melhor e quando fui rodar para pegar as métricas, deu erro de chaves de api pelo artefato e voi investigar o porque. erro foi ocasionado porque a preparação foi feita com o python do .venv e o pytest foi feito com o python da máquina. Vou arrumar isso e vamos seguir. Deu certo e o treino foi feito. agora, vamos fazer a api e suas endpoints para fechar o projeto.
 
 
 

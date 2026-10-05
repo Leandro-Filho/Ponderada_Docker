@@ -1,0 +1,85 @@
+{
+  "gerado_em": "2026-10-05T18:37:58+00:00",
+  "fonte_dados": "dados/dataset.csv",
+  "linhas_dataset": 1692,
+  "exemplos_utilizaveis": 1631,
+  "periodo": [
+    "2021-12-04",
+    "2026-05-22"
+  ],
+  "features": [
+    "retorno_log_1d",
+    "retorno_log_7d",
+    "dist_media_30d",
+    "volatilidade_ewma",
+    "rsi_14",
+    "juros_pct",
+    "var_juros_30d",
+    "regime_subindo",
+    "regime_cortando",
+    "fim_de_semana"
+  ],
+  "split": {
+    "tipo": "cronologico_sem_shuffle",
+    "proporcao_teste": 0.2,
+    "treino_dias": 1304,
+    "teste_dias": 327,
+    "teste_periodo": [
+      "2025-06-30",
+      "2026-05-22"
+    ]
+  },
+  "modelo_escolhido": "ridge",
+  "criterio_escolha": "menor rmse_preco_usd no teste, entre os modelos que aprendem",
+  "bateu_baseline_naive": false,
+  "ganho_sobre_naive_pct": -1.03,
+  "metricas_por_modelo": {
+    "naive": {
+      "rmse_preco_usd": 1969.236520129391,
+      "mae_preco_usd": 1454.2525688073395,
+      "mape_preco_pct": 1.6066371577042964,
+      "rmse_retorno_pp": 2.2422766889626216,
+      "acuracia_direcao_pct": 0.0
+    },
+    "ridge": {
+      "rmse_preco_usd": 1989.5117282169592,
+      "mae_preco_usd": 1469.8904034268514,
+      "mape_preco_pct": 1.6247902337548612,
+      "rmse_retorno_pp": 2.253460344802375,
+      "acuracia_direcao_pct": 49.54128440366973
+    },
+    "gradient_boosting": {
+      "rmse_preco_usd": 2164.984149345911,
+      "mae_preco_usd": 1609.933019461342,
+      "mape_preco_pct": 1.7513842187884734,
+      "rmse_retorno_pp": 2.376432775485978,
+      "acuracia_direcao_pct": 48.318042813455655
+    }
+  },
+  "calibracao_faixa": {
+    "nivel_80": {
+      "z": 1.2816,
+      "cobertura_empirica_pct": 82.57,
+      "largura_media_pct": 5.47
+    },
+    "nivel_95": {
+      "z": 1.96,
+      "cobertura_empirica_pct": 93.58,
+      "largura_media_pct": 8.37
+    }
+  },
+  "importancia_features": {
+    "juros_pct": 0.0021729394687642956,
+    "dist_media_30d": -0.001735452507860675,
+    "rsi_14": 0.0014540950680921691,
+    "var_juros_30d": -0.0012807517216630725,
+    "retorno_log_1d": -0.000984253221904367,
+    "fim_de_semana": 0.0008708844055998894,
+    "regime_cortando": -0.0008102816669184983,
+    "volatilidade_ewma": 0.0006128988034873831,
+    "retorno_log_7d": 0.00026207184585268624,
+    "regime_subindo": 0.00017663735631283156
+  },
+  "ultimo_preco_conhecido": 76619.87,
+  "ultima_data_conhecida": "2026-05-23"
+}
