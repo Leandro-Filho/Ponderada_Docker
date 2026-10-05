@@ -1,34 +1,30 @@
 """
-TREINAMENTO — estima o preço de fechamento do BTC no dia seguinte,
-a partir do histórico do próprio BTC e do juros americano.
+TREINO — a caixa "container 1" do diagrama de componentes.
 
-Roda dentro do container de treino: lê /dados/dataset.csv e grava o artefato
-em /artefatos, o volume compartilhado com a API. É assim que o modelo chega
-na inferência.
+    dataset.csv ─→ treinar.py ─→ modelo.joblib (no volume compartilhado)
+                        ↑
+                  comum/features.py
 
-AS QUATRO DECISÕES, e o porquê de cada uma:
+Cada passo do diagrama é uma função aqui embaixo, na mesma ordem:
 
-1. O alvo é o RETORNO logarítmico de amanhã, não o preço.
-   Prevendo o preço direto, o modelo só precisa copiar o valor de ontem: o R²
-   passa de 0,99 e parece ótimo sem ter aprendido nada. Prevendo a variação,
-   ele é obrigado a dizer algo sobre o movimento, e o erro fica comparável ao
-   do baseline.
+    montar_exemplos()        X (features) e y (retorno de amanhã)
+    dividir_cronologico()    80% antigos / 20% recentes, SEM embaralhar
+    treinar_candidatos()     naive, ridge, gradient boosting
+    escolher_melhor()        menor RMSE entre os que aprendem
+    medir_calibracao()       a faixa de 80% cobre mesmo 80%?
+    salvar_artefato()        joblib.dump no volume
 
-2. Split CRONOLÓGICO, sem embaralhar.
-   shuffle=True em série temporal é vazamento: o modelo treinaria vendo dias
-   posteriores aos que vai prever.
+AS QUATRO DECISÕES:
 
-3. O baseline NAIVE é treinado e medido junto.
-   "Amanhã fecha igual a hoje". Sem ele não dá para afirmar que o modelo
-   aprendeu alguma coisa.
+1. O alvo é o RETORNO de amanhã, não o preço. Prevendo o preço direto, basta
+   copiar o valor de ontem e o R² passa de 0,99 sem ter aprendido nada.
+2. Split CRONOLÓGICO. shuffle=True em série temporal é vazamento.
+3. O baseline NAIVE ("amanhã fecha igual a hoje") é medido junto. Sem ele não
+   dá para afirmar que o modelo aprendeu algo.
+4. Além do ponto, estima a FAIXA pela volatilidade EWMA, e mede a calibração
+   dela. O ponto é quase imprevisível; a incerteza não é.
 
-4. Além do ponto, estima a FAIXA de incerteza pela volatilidade EWMA, e mede
-   a calibração dessa faixa no teste. O ponto é quase imprevisível; a
-   incerteza não é.
-
-Uso:
-    python treinar.py
-    DADOS=... ARTEFATOS=... PROP_TESTE=0.2 python treinar.py
+Uso:  python treino/treinar.py
 """
 from __future__ import annotations
 
@@ -51,25 +47,49 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-# o módulo compartilhado com a API
 sys.path.insert(0, "/app/comum")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "comum"))
-import features as ft  # noqa: E402
+import features as ft  # noqa: E402  (o MESMO módulo que a API usa)
 
-DADOS      = Path(os.environ.get("DADOS", "/dados/dataset.csv"))
-ARTEFATOS  = Path(os.environ.get("ARTEFATOS", "/artefatos"))
+DADOS = Path(os.environ.get("DADOS", "/dados/dataset.csv"))
+ARTEFATOS = Path(os.environ.get("ARTEFATOS", "/artefatos"))
 PROP_TESTE = float(os.environ.get("PROP_TESTE", "0.2"))
-SEMENTE    = int(os.environ.get("SEMENTE", "42"))
-NIVEIS     = (80, 95)
+SEMENTE = int(os.environ.get("SEMENTE", "42"))
+NIVEIS = (80, 95)
 
 
 def log(m: str) -> None:
     print(f"[treino] {m}", flush=True)
 
 
-def avaliar(preco_hoje, ret_real, ret_prev) -> dict:
+# ------------------------------------------------------------- 1. exemplos
+def montar_exemplos(d: pd.DataFrame):
+    """X pelo MESMO código que a API usa; y = retorno logarítmico de amanhã."""
+    X = ft.calcular(d["preco_btc_usd"], d["juros_pct"], d["data"])
+    y = np.log(d["preco_btc_usd"].shift(-1) / d["preco_btc_usd"])
+    ok = X.notna().all(axis=1) & y.notna()
+
+    log(f"descartei {int((~ok).sum())} linha(s): aquecimento das janelas + último dia sem amanhã")
+    log(f"{int(ok.sum())} exemplos, {len(ft.FEATURES)} features (de comum/features.py)")
+    return (X[ok].reset_index(drop=True),
+            y[ok].reset_index(drop=True),
+            d.loc[ok, "preco_btc_usd"].reset_index(drop=True),
+            d.loc[ok, "data"].reset_index(drop=True))
+
+
+# ---------------------------------------------------------------- 2. split
+def dividir_cronologico(datas: pd.Series) -> int:
+    corte = int(len(datas) * (1 - PROP_TESTE))
+    log(f"treino: {corte} dias ({datas.iloc[0].date()} a {datas.iloc[corte-1].date()})")
+    log(f"teste : {len(datas)-corte} dias ({datas.iloc[corte].date()} a {datas.iloc[-1].date()})")
+    log("split por DATA, sem shuffle — embaralhar série temporal é vazamento")
+    return corte
+
+
+# ------------------------------------------------------------ 3. candidatos
+def medir(preco_hoje, ret_real, ret_prev) -> dict:
     """Mede nas duas escalas: no retorno (o que o modelo prevê) e no preço
-    reconstruído (o que o usuário final enxerga)."""
+    reconstruído (o que o usuário final vê)."""
     real = preco_hoje * np.exp(ret_real)
     prev = preco_hoje * np.exp(ret_prev)
     return {
@@ -81,44 +101,7 @@ def avaliar(preco_hoje, ret_real, ret_prev) -> dict:
     }
 
 
-def main() -> None:
-    log(f"python {platform.python_version()} | scikit-learn {sklearn.__version__} | semente {SEMENTE}")
-
-    # ------------------------------------------------------------- carregar
-    if not DADOS.exists():
-        raise SystemExit(
-            f"ERRO: não encontrei {DADOS}.\n"
-            "Rode antes:  python dados/preparar.py\n"
-            "e confira o volume montado em /dados no docker-compose.yml.")
-    d = pd.read_csv(DADOS, parse_dates=["data"]).sort_values("data").reset_index(drop=True)
-    log(f"dataset: {len(d)} linhas | {d['data'].min().date()} a {d['data'].max().date()}")
-    log(f"juros observado em {int(d['juros_observado'].sum())} dias, "
-        f"preenchido em {int((1-d['juros_observado']).sum())} "
-        f"({(1-d['juros_observado'].mean())*100:.1f}%)")
-
-    # ------------------------ features pelo MESMO código que a API vai usar
-    X = ft.calcular(d["preco_btc_usd"], d["juros_pct"], d["data"])
-    y = np.log(d["preco_btc_usd"].shift(-1) / d["preco_btc_usd"])   # alvo: retorno de amanhã
-    ok = X.notna().all(axis=1) & y.notna()
-
-    X = X[ok].reset_index(drop=True)
-    y = y[ok].reset_index(drop=True)
-    preco = d.loc[ok, "preco_btc_usd"].reset_index(drop=True)
-    datas = d.loc[ok, "data"].reset_index(drop=True)
-    log(f"descartei {int((~ok).sum())} linha(s): aquecimento das janelas + último dia sem amanhã")
-    log(f"{len(X)} exemplos, {len(ft.FEATURES)} features (de comum/features.py)")
-
-    # -------------------------------------------------- split cronológico
-    corte = int(len(X) * (1 - PROP_TESTE))
-    log(f"treino: {corte} dias ({datas.iloc[0].date()} a {datas.iloc[corte-1].date()})")
-    log(f"teste : {len(X)-corte} dias ({datas.iloc[corte].date()} a {datas.iloc[-1].date()})")
-    log("split por DATA, sem shuffle — embaralhar série temporal é vazamento")
-
-    X_tr, X_te = X.iloc[:corte], X.iloc[corte:]
-    y_tr, y_te = y.iloc[:corte], y.iloc[corte:]
-    preco_te = preco.iloc[corte:].to_numpy()
-
-    # ---------------------------------------------------------- candidatos
+def treinar_candidatos(X, y, preco, corte):
     candidatos = {
         # baseline: prevê retorno ZERO => "amanhã fecha igual a hoje"
         "naive": Pipeline([("modelo", DummyRegressor(strategy="constant", constant=0.0))]),
@@ -129,64 +112,69 @@ def main() -> None:
                                            n_estimators=300, learning_rate=0.03, max_depth=3,
                                            subsample=0.8, random_state=SEMENTE))]),
     }
-
     resultados = {}
     for nome, pipe in candidatos.items():
-        pipe.fit(X_tr, y_tr)
-        resultados[nome] = avaliar(preco_te, y_te.to_numpy(), pipe.predict(X_te))
-        m = resultados[nome]
-        log(f"{nome:<18} RMSE US$ {m['rmse_preco_usd']:>8,.0f} | MAPE {m['mape_preco_pct']:>5.2f}%"
-            f" | direção {m['acuracia_direcao_pct']:>5.1f}%")
+        pipe.fit(X.iloc[:corte], y.iloc[:corte])
+        m = medir(preco.iloc[corte:].to_numpy(),
+                  y.iloc[corte:].to_numpy(),
+                  pipe.predict(X.iloc[corte:]))
+        resultados[nome] = m
+        log(f"{nome:<18} RMSE US$ {m['rmse_preco_usd']:>8,.0f} | "
+            f"MAPE {m['mape_preco_pct']:>5.2f}% | direção {m['acuracia_direcao_pct']:>5.1f}%")
+    return candidatos, resultados
 
+
+def escolher_melhor(resultados: dict):
     disputa = {k: v for k, v in resultados.items() if k != "naive"}
     escolhido = min(disputa, key=lambda k: disputa[k]["rmse_preco_usd"])
     rmse_naive = resultados["naive"]["rmse_preco_usd"]
-    rmse_esc = resultados[escolhido]["rmse_preco_usd"]
-    bateu = rmse_esc < rmse_naive
-    ganho = 100 * (rmse_naive - rmse_esc) / rmse_naive
+    ganho = 100 * (rmse_naive - resultados[escolhido]["rmse_preco_usd"]) / rmse_naive
+    bateu = ganho > 0
     log(f"escolhido: {escolhido} (menor RMSE entre os que aprendem)")
-    log(f"vs. baseline Naive: {ganho:+.1f}%  ->  {'BATEU' if bateu else 'NÃO BATEU'}"
-        "   <<< registrar no devlog")
+    log(f"vs. baseline Naive: {ganho:+.1f}%  ->  "
+        f"{'BATEU' if bateu else 'NÃO BATEU'}   <<< registrar no devlog")
+    return escolhido, bateu, ganho
 
-    # -------------------- calibração da faixa (volatilidade EWMA)
-    sigma_te = X_te["volatilidade_ewma"].to_numpy()
+
+# --------------------------------------------------------- 4. faixa (EWMA)
+def medir_calibracao(X_teste, y_teste) -> dict:
+    """A faixa de 80% cobre mesmo 80% dos casos no teste? É a única parte do
+    modelo com desempenho mensurável."""
+    sigma = X_teste["volatilidade_ewma"].to_numpy()
     calibracao = {}
     for nivel in NIVEIS:
         z = float(norm.ppf(0.5 + nivel / 200))
-        dentro = np.abs(y_te.to_numpy()) <= z * sigma_te
+        dentro = np.abs(y_teste.to_numpy()) <= z * sigma
         calibracao[f"nivel_{nivel}"] = {
             "z": round(z, 4),
             "cobertura_empirica_pct": round(float(dentro.mean() * 100), 2),
-            "largura_media_pct": round(
-                float(np.mean(np.exp(z * sigma_te) - np.exp(-z * sigma_te)) * 100), 2),
+            "largura_media_pct": round(float(np.mean(np.exp(z * sigma) - np.exp(-z * sigma)) * 100), 2),
         }
         log(f"faixa {nivel}%: cobertura empírica "
             f"{calibracao[f'nivel_{nivel}']['cobertura_empirica_pct']:.1f}% "
             f"(largura média {calibracao[f'nivel_{nivel}']['largura_media_pct']:.1f}%)")
+    return calibracao
 
-    # ------------------ re-treino com a série inteira, para exportar
-    # A escolha foi feita olhando o teste; agora quero o modelo com a
-    # informação mais recente possível antes de salvar.
-    final = candidatos[escolhido]
-    final.fit(X, y)
-    log("re-treinado com 100% dos dados para exportação")
 
-    est = final.named_steps["modelo"]
+# ------------------------------------------------------------ 5. artefato
+def importancias(pipeline) -> dict:
+    est = pipeline.named_steps["modelo"]
     if hasattr(est, "feature_importances_"):
-        imp = dict(sorted(zip(ft.FEATURES, map(float, est.feature_importances_)),
-                          key=lambda t: -t[1]))
-    elif hasattr(est, "coef_"):
-        imp = dict(sorted(zip(ft.FEATURES, map(float, est.coef_)), key=lambda t: -abs(t[1])))
-    else:
-        imp = {}
-    log("features mais influentes: " + ", ".join(list(imp)[:4]))
+        pares = zip(ft.FEATURES, map(float, est.feature_importances_))
+        return dict(sorted(pares, key=lambda t: -t[1]))
+    if hasattr(est, "coef_"):
+        pares = zip(ft.FEATURES, map(float, est.coef_))
+        return dict(sorted(pares, key=lambda t: -abs(t[1])))
+    return {}
 
-    # ------------------------------------------------------------ artefato
+
+def salvar_artefato(pipeline, d, datas, escolhido, resultados, bateu, ganho,
+                    calibracao, corte) -> None:
     ARTEFATOS.mkdir(parents=True, exist_ok=True)
     agora = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     artefato = {
-        "pipeline": final,                    # scaler + modelo, juntos
+        "pipeline": pipeline,                 # scaler + modelo, juntos
         "features": ft.FEATURES,              # contrato com a API
         "minimo_historico": ft.MINIMO_HISTORICO,
         "lambda_ewma": ft.LAMBDA_EWMA,
@@ -209,28 +197,23 @@ def main() -> None:
     joblib.dump(artefato, caminho, compress=3)
     log(f"ARTEFATO salvo: {caminho} ({caminho.stat().st_size/1024:.0f} KB)")
 
-    # relatório legível, para colar no devlog
     relatorio = {
         "gerado_em": agora,
         "fonte_dados": str(DADOS),
         "linhas_dataset": int(len(d)),
-        "exemplos_utilizaveis": int(len(X)),
+        "exemplos_utilizaveis": int(len(datas)),
         "periodo": artefato["periodo_treino"],
         "features": ft.FEATURES,
-        "split": {
-            "tipo": "cronologico_sem_shuffle",
-            "proporcao_teste": PROP_TESTE,
-            "treino_dias": int(corte),
-            "teste_dias": int(len(X) - corte),
-            "teste_periodo": [str(datas.iloc[corte].date()), str(datas.iloc[-1].date())],
-        },
+        "split": {"tipo": "cronologico_sem_shuffle", "proporcao_teste": PROP_TESTE,
+                  "treino_dias": int(corte), "teste_dias": int(len(datas) - corte),
+                  "teste_periodo": [str(datas.iloc[corte].date()), str(datas.iloc[-1].date())]},
         "modelo_escolhido": escolhido,
         "criterio_escolha": "menor rmse_preco_usd no teste, entre os modelos que aprendem",
         "bateu_baseline_naive": bool(bateu),
         "ganho_sobre_naive_pct": round(ganho, 2),
         "metricas_por_modelo": resultados,
         "calibracao_faixa": calibracao,
-        "importancia_features": imp,
+        "importancia_features": importancias(pipeline),
         "ultimo_preco_conhecido": artefato["ultimo_preco_conhecido"],
         "ultima_data_conhecida": artefato["ultima_data_conhecida"],
     }
@@ -238,7 +221,6 @@ def main() -> None:
         json.dumps(relatorio, indent=2, ensure_ascii=False), encoding="utf-8")
     log(f"relatório salvo: {ARTEFATOS/'metricas.json'}")
 
-    # exemplo de requisição pronto, com os últimos dias reais
     n = ft.MINIMO_HISTORICO + 9
     (ARTEFATOS / "exemplo_requisicao.json").write_text(json.dumps({
         "precos": d["preco_btc_usd"].tail(n).round(2).tolist(),
@@ -246,6 +228,35 @@ def main() -> None:
         "data_final": artefato["ultima_data_conhecida"],
     }, indent=2), encoding="utf-8")
     log(f"exemplo de requisição salvo ({n} dias)")
+
+
+# ------------------------------------------------------------------- main
+def main() -> None:
+    log(f"python {platform.python_version()} | scikit-learn {sklearn.__version__} | semente {SEMENTE}")
+
+    if not DADOS.exists():
+        raise SystemExit(f"ERRO: não encontrei {DADOS}.\nRode antes: python dados/preparar.py")
+    d = pd.read_csv(DADOS, parse_dates=["data"]).sort_values("data").reset_index(drop=True)
+    log(f"dataset: {len(d)} linhas | {d['data'].min().date()} a {d['data'].max().date()}")
+    log(f"juros observado em {int(d['juros_observado'].sum())} dias, "
+        f"preenchido em {int((1-d['juros_observado']).sum())} "
+        f"({(1-d['juros_observado'].mean())*100:.1f}%)")
+
+    X, y, preco, datas = montar_exemplos(d)
+    corte = dividir_cronologico(datas)
+
+    candidatos, resultados = treinar_candidatos(X, y, preco, corte)
+    escolhido, bateu, ganho = escolher_melhor(resultados)
+    calibracao = medir_calibracao(X.iloc[corte:], y.iloc[corte:])
+
+    # A escolha foi feita olhando o teste; agora re-treino com a série inteira,
+    # para exportar o modelo com a informação mais recente possível.
+    final = candidatos[escolhido]
+    final.fit(X, y)
+    log("re-treinado com 100% dos dados para exportação")
+    log("features mais influentes: " + ", ".join(list(importancias(final))[:4]))
+
+    salvar_artefato(final, d, datas, escolhido, resultados, bateu, ganho, calibracao, corte)
     log("TREINAMENTO CONCLUÍDO")
 
 
