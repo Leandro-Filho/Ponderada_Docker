@@ -42,8 +42,8 @@ flowchart LR
       A["Flask + gunicorn :8000<br/>carrega o artefato na subida<br/>+ serve a página"]
     end
 
-    NAV(["navegador / curl / Postman<br/>= a aplicação cliente"])
     F["comum/features.py<br/>fonte única das features"]
+    NAV(["aplicação cliente<br/>navegador / curl / Postman"])
 
     B --> P
     J --> P
@@ -51,7 +51,7 @@ flowchart LR
     DS -->|"bind mount :ro"| T
     T  -->|"joblib.dump — ESCRITA"| VOL
     VOL -->|"joblib.load — SOMENTE LEITURA"| A
-    NAV <-->|"HTTP :8000"| A
+    A <-->|"HTTP :8000"| NAV
     F -.->|"importado"| T
     F -.->|"importado"| A
 
@@ -75,30 +75,34 @@ Três coisas para explicar na banca:
 ```mermaid
 sequenceDiagram
     autonumber
-    actor U as Cliente<br/>(navegador / curl)
+    actor U as Cliente
     participant A as api (gunicorn)
     participant F as features.py
     participant M as modelo.joblib<br/>(em memória)
 
     Note over A,M: na SUBIDA do container:<br/>joblib.load() uma única vez
 
-    U->>A: POST /prever<br/>{precos:[...], juros:[...]}
+    U->>A: POST /prever {precos, juros}
     activate A
 
-    A->>A: valida o corpo<br/>(listas do mesmo tamanho? dias suficientes?)
+    A->>A: validar_corpo()
 
     alt corpo inválido
         A--)U: 400 {erro: "histórico insuficiente: ..."}
     else corpo válido
-        A->>F: calcular features do último dia
-        F--)A: vetor de features
-        A->>M: pipeline.predict(X)
-        M--)A: retorno previsto
-        A->>A: preço = preço_hoje × e^retorno<br/>faixa = ± z × volatilidade
-        A--)U: 200 {preco_previsto, faixa, servido_por}
+        A->>F: calcular_features()
+        F--)A: vetor de 10 features
+        A->>M: predizer_retorno()
+        M--)A: retorno log de amanhã
+        A->>A: montar_resposta()<br/>preço = preço_hoje × e^retorno<br/>faixa = ± z × volatilidade
+        A--)U: 200 {preco_previsto, faixas, servido_por}
     end
     deactivate A
 ```
+
+**Cada mensagem deste diagrama é uma função em `api/app.py`, com o mesmo
+nome.** `validar_corpo` → `calcular_features` → `predizer_retorno` →
+`montar_resposta`, chamadas nessa ordem dentro de `prever()`.
 
 Notação: seta de **ponta cheia** = mensagem síncrona (quem chama espera a
 resposta); seta **tracejada** = retorno; `alt` = caminho alternativo.

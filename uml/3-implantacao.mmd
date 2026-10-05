@@ -1,0 +1,21 @@
+flowchart TB
+    subgraph HOST["«device» máquina do desenvolvedor"]
+      D[("«artifact» dados/dataset.csv<br/>no disco do host")]
+
+      subgraph ENGINE["«execution environment» Docker Engine"]
+        subgraph REDE["rede do Compose (bridge)"]
+          TR["«container» treino<br/>python:3.12-slim<br/>job, sem porta"]
+          AP["«container» api<br/>python:3.12-slim + gunicorn<br/>:8000 → publicada em 8000"]
+        end
+        V[("«volume» artefatos<br/>«artifact» modelo.joblib<br/>«artifact» metricas.json")]
+      end
+    end
+
+    NAV(["«device» navegador / curl"])
+
+    D  -->|"bind mount :ro"| TR
+    TR -->|"escrita"| V
+    V  -->|"leitura (:ro)"| AP
+    NAV -->|"HTTP tcp:8000"| AP
+
+    style V fill:#f7a93b,stroke:#b8761f,color:#1a1205

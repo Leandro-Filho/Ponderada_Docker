@@ -1,0 +1,25 @@
+services:
+ 
+  treino:
+    build:
+      context: .                      
+      dockerfile: treino/Dockerfile
+    volumes:
+      - ./dados:/dados:ro             
+      - artefatos:/artefatos         
+ 
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    ports:
+      - "8000:8000"                  
+    volumes:
+      - artefatos:/artefatos:ro       
+    depends_on:
+      treino:
+        condition: service_completed_successfully   
+ 
+volumes:
+  artefatos:
+ 

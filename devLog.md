@@ -47,5 +47,7 @@ pytest testes/ -v                                     # 14 testes
 
 o arquivo gerado usa a biblioteca scikit-learn para pegar os modelos e fazemos uma comparação de 3 modelos para ver qual se saí melhor e quando fui rodar para pegar as métricas, deu erro de chaves de api pelo artefato e voi investigar o porque. erro foi ocasionado porque a preparação foi feita com o python do .venv e o pytest foi feito com o python da máquina. Vou arrumar isso e vamos seguir. Deu certo e o treino foi feito. agora, vamos fazer a api e suas endpoints para fechar o projeto.
 
+5. api do projeto 
 
+a api foi feita com ajuda do claude. Nela segue bem o que fizemos no diagrama uml: 
 

@@ -1,0 +1,14 @@
+flowchart TD
+    A([início]) --> L["python dados/preparar.py<br/>gera dataset.csv"]
+    L --> B["docker compose build"]
+    B --> C["docker compose run --rm treino"]
+    C --> D{"exit 0?"}
+    D -- não --> E["docker compose logs treino"] --> C
+    D -- sim --> F[("modelo.joblib<br/>no volume")]
+    F --> G["docker compose up -d api"]
+    G --> H{"GET /health<br/>modelo_carregado = true?"}
+    H -- não --> I["503: artefato não encontrado<br/>→ rodar o treino"] --> C
+    H -- sim --> J["POST /prever"]
+    J --> K([predição demonstrada])
+
+    F -.->|"re-treinar sem derrubar a api"| M["GET /recarregar"] --> H
