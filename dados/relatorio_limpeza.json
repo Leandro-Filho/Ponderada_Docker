@@ -1,0 +1,99 @@
+{
+  "problemas_encontrados": [
+    "8 dias de mercado fechado traziam o juros do dia útil SEGUINTE (informação do futuro) — corrigido por forward-fill"
+  ],
+  "decisoes": [
+    "mantive só data e taxa; as outras eram constantes, redundantes ou deriváveis da data",
+    "zerei todo valor de dia fechado (fim de semana e feriado federal) e refiz por forward-fill; nunca backward-fill, que seria vazamento",
+    "regime = variação do juros nos últimos 60 dias, limiar de 0.1 p.p.; os primeiros 60 dias ficam 'indefinido' em vez de receberem um palpite"
+  ],
+  "btc": {
+    "linhas": 1826,
+    "duplicatas": 0,
+    "nulos": 0,
+    "precos_nao_positivos": 0,
+    "dias_faltando": 0
+  },
+  "colunas_descartadas": [
+    "rate_decimal (= fed_funds_effective_rate_pct/100, redundante)",
+    "day_of_week (derivável da data)",
+    "is_weekday (derivável da data)",
+    "source_series (constante)",
+    "source_url (constante)"
+  ],
+  "vazamento_backfill": {
+    "dias_afetados": 8,
+    "detalhe": [
+      {
+        "data": "2021-10-30",
+        "dia_util_anterior": 0.07,
+        "valor_no_arquivo": 0.08,
+        "dia_util_seguinte": 0.08
+      },
+      {
+        "data": "2021-10-31",
+        "dia_util_anterior": 0.07,
+        "valor_no_arquivo": 0.08,
+        "dia_util_seguinte": 0.08
+      },
+      {
+        "data": "2022-07-30",
+        "dia_util_anterior": 2.32,
+        "valor_no_arquivo": 2.33,
+        "dia_util_seguinte": 2.33
+      },
+      {
+        "data": "2022-07-31",
+        "dia_util_anterior": 2.32,
+        "valor_no_arquivo": 2.33,
+        "dia_util_seguinte": 2.33
+      },
+      {
+        "data": "2023-03-11",
+        "dia_util_anterior": 4.57,
+        "valor_no_arquivo": 4.58,
+        "dia_util_seguinte": 4.58
+      },
+      {
+        "data": "2023-03-12",
+        "dia_util_anterior": 4.57,
+        "valor_no_arquivo": 4.58,
+        "dia_util_seguinte": 4.58
+      },
+      {
+        "data": "2025-11-01",
+        "dia_util_anterior": 3.86,
+        "valor_no_arquivo": 3.87,
+        "dia_util_seguinte": 3.87
+      },
+      {
+        "data": "2025-11-02",
+        "dia_util_anterior": 3.86,
+        "valor_no_arquivo": 3.87,
+        "dia_util_seguinte": 3.87
+      }
+    ]
+  },
+  "dgs10": null,
+  "overlap": {
+    "dias": 1692,
+    "inicio": "2021-10-05",
+    "fim": "2026-05-23"
+  },
+  "pct_juros_preenchido": 31.56,
+  "distribuicao_regime": {
+    "parado": 804,
+    "subindo": 533,
+    "cortando": 295,
+    "indefinido": 60
+  },
+  "linhas_finais": 1692,
+  "colunas_finais": [
+    "data",
+    "preco_btc_usd",
+    "volume_btc_usd",
+    "juros_pct",
+    "juros_observado",
+    "regime_juros"
+  ]
+}

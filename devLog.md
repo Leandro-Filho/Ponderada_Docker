@@ -20,5 +20,18 @@ Ou seja, vamos containizar o treino e a api, já esses são as pastas que rodam 
 
 outro ponto que mudei de ideia: o gpt tinha nos dado um dataset dp Fed, que altera o juros americanos de pouco em poucos, então vamos usar outra dataset dos juros americanos negociados no mercado porque ele muda diariamente
 
+3. preparar o ambiente
+
+vou começar a criar um .venv para as bibliotecas que precisaremos nesse projeto 
+
+gerei a limpeza dos dados na pasta dados e preparar.py. nela, está sendo feita a retirada de duplicadas, normalizando as colunas, separando quais colunas podem ser possíveis vazamentos para o modelo, tirando nulos, etc. Ou seja, uma limpeza e preparação dos dados completa.
+
+além disso, gerei  diagrama uml de como deverá ser feita a aplicação: primeiro fazemos um post para pegar a predição do bitcoin e ele bate na api e verifica se os dados são suficientes ou não para isso, depois ele manda para a fetures.py calcular os preços dos último dia e retorna para a api. depois disso, a api manda para o modelo.joblib para prever o valor e ele retorna o resultado para a api que manda de volta para o cliente o resultado 200 e suas predições. aqui, precisei usar o claude tanto para gerar o diagrama quanto para me ajudar a fazer a estrutura, já que para mim fazia sentido colocar no container a preparação, mas com algumas conversas com ele, decidi manter com dois containers: um com o treino e outro com a api
+
+Próximo passo, será fazer o modelo.
+
+4. fazer o código do modelo
+
+
 
 
