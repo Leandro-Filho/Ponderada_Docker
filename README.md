@@ -1,0 +1,1 @@
+Ponderada do docker em sala 
