@@ -1,17 +1,17 @@
 # Container 2 — API. Carrega o artefato do volume e serve as predições.
 FROM python:3.12-slim
- 
+
 ENV PYTHONUNBUFFERED=1
- 
+
 WORKDIR /app
- 
+
 COPY api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
- 
+
 COPY comum/ comum/
-COPY api/app.py api/pagina.html ./
- 
+COPY api/app.py .
 
 EXPOSE 8000
+
 CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:8000", "--access-logfile", "-", "app:app"]
 

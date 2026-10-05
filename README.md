@@ -28,21 +28,47 @@ As quatro alternativas consideradas e a justificativa da escolha estão em
 ## Rodar
 
 ```bash
-python dados/preparar.py              # 1. limpeza  -> dados/dataset.csv
-docker compose build                  # 2. constrói as duas imagens
-docker compose run --rm treino        # 3. treina   -> modelo.joblib no volume
-docker compose up -d api              # 4. sobe a inferência
+python dados/preparar.py        # 1. limpeza -> dados/dataset.csv
+docker compose up --build       # 2. treina e sobe a API
 ```
 
-Abrir **<http://localhost:8000>**.
+Um comando só. O `depends_on: service_completed_successfully` faz a API esperar
+o treino **terminar com exit 0** antes de subir.
+
+Testar (a aplicação cliente é o curl):
 
 ```bash
-curl -s http://localhost:8000/health | python3 -m json.tool   # modelo_carregado: true
-curl -s http://localhost:8000/exemplo | python3 -m json.tool  # a predição
+curl -s localhost:8000 | python3 -m json.tool                 # o índice das rotas
+curl -s localhost:8000/health | python3 -m json.tool          # modelo_carregado: true
+curl -s localhost:8000/exemplo | python3 -m json.tool         # a predição
+```
+
+Com a sua própria série:
+
+```bash
+curl -s -X POST localhost:8000/prever \
+  -H "Content-Type: application/json" \
+  -d '{"precos": [51558.05, ...], "juros": [0.08, ...], "data_final": "2026-05-23"}' \
+  | python3 -m json.tool
+```
+
+São 61 dias no mínimo em cada lista. O jeito mais rápido de montar o corpo é
+pegar o exemplo que o treino salvou:
+
+```bash
+curl -s localhost:8000/exemplo \
+  | python3 -c 'import sys,json; print(json.dumps(json.load(sys.stdin)["entrada"]))' \
+  | curl -s -X POST localhost:8000/prever -H "Content-Type: application/json" --data @- \
+  | python3 -m json.tool
 ```
 
 Derrubar: `docker compose down` (mantém o artefato) ou `docker compose down -v`
 (apaga o volume e obriga a re-treinar).
+
+> Cada `docker compose up` roda o treino de novo, porque o `treino` é uma
+> dependência da API. Leva poucos segundos e garante que o artefato sempre
+> corresponde ao código. Se preferir não re-treinar, use
+> `docker compose up -d --no-deps api`.
 
 ### Sem Docker
 
@@ -63,17 +89,16 @@ python -m pytest testes/ -v                 # com 'python -m', não 'pytest' sol
 | 1 | `treino` | `python:3.12-slim` | job (roda e morre) | nenhuma |
 | 2 | `api` | `python:3.12-slim` + gunicorn | serviço | 8000, publicada |
 
-A aplicação cliente é uma página servida pela **própria API**, na mesma origem.
-Isso elimina um terceiro container e qualquer problema de CORS.
+A aplicação cliente é o **curl** (ou o Postman) — não há front-end. Isso elimina
+um terceiro container e qualquer problema de CORS.
 
 ### A API
 
 | Método | Rota | O que faz |
 |---|---|---|
-| GET | `/` | a página de demonstração |
+| GET | `/` | índice das rotas — um `curl localhost:8000` mostra tudo que dá para chamar |
 | GET | `/health` | liveness; usado pelo `HEALTHCHECK`. Responde 200 mesmo sem modelo, e `modelo_carregado` diz a verdade |
-| GET | `/info` | qual modelo, quando treinado, de qual período |
-| GET | `/modelo` | métricas de todos os modelos, calibração, importância das features |
+| GET | `/info` | qual modelo, quando treinado, métricas e calibração |
 | GET | `/exemplo` | predição com os últimos dias reais — demo de um clique |
 | POST | `/prever` | `{"precos": [...], "juros": [...], "data_final": "AAAA-MM-DD"}` |
 | GET | `/recarregar` | relê o artefato **sem reiniciar** o container |
@@ -156,14 +181,17 @@ do dia t seja idêntica. Se alguma feature espiasse o futuro, divergiriam.
 ### A demonstração que prova o diagrama
 
 ```bash
-docker compose down -v                      # apaga o volume: o artefato morre
-docker compose up -d api
-curl -s localhost:8000/health               # modelo_carregado: false
-curl -s localhost:8000/exemplo              # 503 modelo indisponível
-docker compose run --rm treino              # re-treina
+docker compose down -v                   # apaga o volume: o artefato morre
+docker compose up -d --no-deps api       # sobe a API SEM rodar o treino
+curl -s localhost:8000/health            # modelo_carregado: false
+curl -s localhost:8000/exemplo           # 503 modelo indisponível
+docker compose run --rm treino           # agora sim, treina
 curl -s localhost:8000/recarregar
-curl -s localhost:8000/exemplo              # volta a 200
+curl -s localhost:8000/exemplo           # volta a 200
 ```
+
+O `--no-deps` é o que permite subir a API sem a dependência — é ele que deixa
+você mostrar o estado "sem artefato".
 
 Se a API responde `503` com o volume vazio e `200` depois do treino, está
 provado na frente de quem avalia que o modelo **passa por ali** e não está
@@ -191,10 +219,49 @@ embutido na imagem.
 │
 ├── comum/features.py         ⭐ fonte única das features
 ├── treino/{Dockerfile,requirements.txt,treinar.py}
-├── api/{Dockerfile,requirements.txt,app.py,pagina.html}
+├── api/{Dockerfile,requirements.txt,app.py}
 ├── testes/test_modelo.py     14 testes
 └── uml/arquitetura.md        4 diagramas + PNG e SVG
 ```
+
+---
+
+## O código espelha o diagrama
+
+Cada caixa do UML é uma função com o mesmo nome. Dá para apresentar apontando
+para o desenho e abrindo o arquivo ao lado.
+
+**Diagrama de componentes → arquivos**
+
+| Caixa no diagrama | Arquivo |
+|---|---|
+| `preparar.py` (LIMPEZA) | `dados/preparar.py` |
+| `comum/features.py` | `comum/features.py` — importado pelos dois |
+| container 1: treino | `treino/treinar.py` + `treino/Dockerfile` |
+| volume `artefatos` | `volumes: artefatos` no compose |
+| container 2: api | `api/app.py` + `api/Dockerfile` |
+
+**Diagrama de sequência → funções de `api/app.py`**
+
+| Mensagem no diagrama | Função |
+|---|---|
+| "valida o corpo" | `validar_corpo()` |
+| `A->>F` calcular features | `calcular_features()` |
+| `A->>M` predizer | `predizer_retorno()` |
+| "preço = preço_hoje × e^retorno" | `montar_resposta()` |
+| as quatro em sequência | `prever()` |
+
+**Caixa "LIMPEZA" → funções de `dados/preparar.py`**
+
+| Passo | Função |
+|---|---|
+| lê o preço do BTC | `carregar_btc()` |
+| lê a taxa e descarta colunas inúteis | `carregar_juros()` |
+| acha o vazamento | `detectar_vazamento()` |
+| corrige olhando só para trás | `corrigir_forward_fill()` |
+| interseção das séries | `juntar()` |
+| subindo / parado / cortando | `classificar_regime()` |
+| trava se algo estiver errado | `validar()` |
 
 ---
 

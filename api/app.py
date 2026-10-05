@@ -15,7 +15,7 @@ As funções abaixo são, na ordem, as mensagens do DIAGRAMA DE SEQUÊNCIA:
       5. devolve 200
 
 Rotas:
-    GET  /            a página de demonstração (a aplicação cliente)
+    GET  /            índice: lista as rotas (útil no curl)
     GET  /health      o serviço está vivo?  (o enunciado pede isto)
     GET  /info        qual modelo está carregado, métricas e calibração
     POST /prever      {"precos": [...], "juros": [...]}  -> predição
@@ -34,14 +34,13 @@ from pathlib import Path
 
 import joblib
 import numpy as np
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request
 from scipy.stats import norm
 
 sys.path.insert(0, "/app/comum")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "comum"))
 import features as ft  # noqa: E402  (o MESMO módulo que o treino usa)
 
-AQUI = Path(__file__).resolve().parent
 CAMINHO_MODELO = Path(os.environ.get("CAMINHO_MODELO", "/artefatos/modelo.joblib"))
 CAMINHO_METRICAS = Path(os.environ.get("CAMINHO_METRICAS", "/artefatos/metricas.json"))
 CAMINHO_EXEMPLO = Path(os.environ.get("CAMINHO_EXEMPLO", "/artefatos/exemplo_requisicao.json"))
@@ -173,9 +172,21 @@ def prever(precos, juros, data_final) -> dict:
 # ROTAS
 # ====================================================================
 @app.get("/")
-def pagina():
-    """A própria API serve a página. Mesma origem = zero CORS, um container a menos."""
-    return send_from_directory(AQUI, "pagina.html")
+def indice():
+    """Índice das rotas. Um `curl localhost:8000` já mostra o que dá para chamar.
+    Não há front-end: a aplicação cliente é o curl (ou o Postman)."""
+    return jsonify({
+        "servico": "api-inferencia-btc",
+        "modelo_carregado": pronto(),
+        "rotas": {
+            "GET /health": "o serviço está vivo",
+            "GET /info": "qual modelo, métricas e calibração",
+            "POST /prever": "{'precos': [...], 'juros': [...], 'data_final': 'AAAA-MM-DD'}",
+            "GET /exemplo": "predição com os últimos dias reais",
+            "GET /recarregar": "relê o artefato sem reiniciar",
+        },
+        "minimo_historico": MODELO["minimo_historico"] if pronto() else None,
+    }), 200
 
 
 @app.get("/health")

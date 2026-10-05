@@ -49,5 +49,248 @@ o arquivo gerado usa a biblioteca scikit-learn para pegar os modelos e fazemos u
 
 5. api do projeto 
 
-a api foi feita com ajuda do claude. Nela segue bem o que fizemos no diagrama uml: 
+a api foi feita com ajuda do claude. Nela segue bem o que fizemos no diagrama uml: como está no diagrama, temos 4 passos: valida o corpo, calcula as features, retorna a predição e monta a rewposta. comecei a fazer o dockerfile do api, com a seguinte lógica: python3.12, pega o comum/comum (que é as features do dataset) e o app.py, estando na porta 8000 e cdm foi uma recomendação do claude: o servidor WSGI de produção, sobe 2 processos worker, escuta em todas as interfaces, porta 8000, o - significa stdout e módulo app (arquivo app.py), variável app (a instância Flask). 
+
+6. subir o projeto nos containers 
+
+agora, vamos subir os projetos nos docker: 
+
+rodamos:
+
+```bash
+docker compose up --build
+```
+
+o docker compose já sobe os dois containers que fizemos. Vou testar as imagens com docker ps para ver se elas estão rodando e está rodando 
+```bash
+b4e05f0beb43   ponderada_docker-api               "gunicorn -w 2 -b 0.…"   3 minutes ago   Up 3 minutes                  0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp   ponderada_docker-api-1
+```
+
+agora, vamos testar as rotas como estão: 
+primeiro, testaremos ops índices das rotas:
+
+```bash
+curl -s localhost:8000 | python3 -m json.tool
+```
+
+resultado satisfatório:
+
+```bash 
+(.venv) bebaran@bebaran-Nitro-ANV15-51:~/Área de trabalho/Ponderada_Docker$ curl -s localhost:8000 | python3 -m json.tool
+{
+    "minimo_historico": 61,
+    "modelo_carregado": true,
+    "rotas": {
+        "GET /exemplo": "predi\u00e7\u00e3o com os \u00faltimos dias reais",
+        "GET /health": "o servi\u00e7o est\u00e1 vivo",
+        "GET /info": "qual modelo, m\u00e9tricas e calibra\u00e7\u00e3o",
+        "GET /recarregar": "rel\u00ea o artefato sem reiniciar",
+        "POST /prever": "{'precos': [...], 'juros': [...], 'data_final': 'AAAA-MM-DD'}"
+    },
+    "servico": "api-inferencia-btc"
+}
+```
+
+agora, testaremos o modelo carregado:
+```bash
+curl -s localhost:8000/health | python3 -m json.tool
+```
+
+resposta ótima:
+```bash
+{
+    "modelo_carregado": true,
+    "servido_por": "b4e05f0beb43",
+    "status": "ok"
+}
+```
+
+quer dizer que o modelo está tudo bem e os containers está rodando
+
+agora, vamos testar a predição: 
+```bash
+curl -s localhost:8000/exemplo | python3 -m json.tool
+```
+
+resultado bem legal:
+```bash
+{
+    "entrada": {
+        "data_final": "2026-05-23",
+        "juros": [
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.64,
+            3.63,
+            3.63,
+            3.63,
+            3.63,
+            3.63,
+            3.63,
+            3.63,
+            3.63,
+            3.63,
+            3.63,
+            3.63,
+            3.63,
+            3.62,
+            3.62,
+            3.62,
+            3.62,
+            3.62
+        ],
+        "precos": [
+            72712.15,
+            74723.96,
+            74086.01,
+            71253.96,
+            69948.9,
+            70510.42,
+            69707.29,
+            68018.15,
+            70726.21,
+            70610.02,
+            71281.3,
+            68722.97,
+            66214.17,
+            66351.07,
+            65966.75,
+            66651.23,
+            68214.87,
+            68116.82,
+            66908.32,
+            66891.74,
+            67295.13,
+            68921.81,
+            68742.91,
+            72057.12,
+            71085.06,
+            71788.68,
+            72945.07,
+            73119.11,
+            70685.37,
+            74632.75,
+            74173.51,
+            74761.96,
+            75095.74,
+            77114.48,
+            75792.06,
+            73905.2,
+            75814.15,
+            76107.44,
+            78317.74,
+            78233.68,
+            77444.27,
+            77624.71,
+            78538.77,
+            77256.3,
+            76295.53,
+            75795.01,
+            76299.62,
+            78132.64,
+            78712.54,
+            78649.17,
+            79826.11,
+            80936.75,
+            81364.62,
+            79989.0,
+            80179.69,
+            80663.63,
+            82256.78,
+            81714.74,
+            80525.56,
+            79291.91,
+            81175.83,
+            79063.41,
+            78164.5,
+            77497.7,
+            76975.91,
+            76807.46,
+            77408.17,
+            77595.39,
+            75567.54,
+            76619.87
+        ]
+    },
+    "resultado": {
+        "aviso": "Predi\u00e7\u00e3o experimental, para fins acad\u00eamicos. N\u00e3o \u00e9 recomenda\u00e7\u00e3o de investimento.",
+        "data_prevista": "2026-05-24",
+        "dias_de_historico_recebidos": 70,
+        "direcao": "baixa",
+        "faixas": {
+            "80%": {
+                "cobertura_medida_no_teste_pct": 82.57,
+                "maximo": 78178.86,
+                "minimo": 75076.4
+            },
+            "95%": {
+                "cobertura_medida_no_teste_pct": 93.58,
+                "maximo": 79021.27,
+                "minimo": 74276.04
+            }
+        },
+        "juros_atual_pct": 3.62,
+        "modelo": "ridge",
+        "preco_atual": 76619.87,
+        "preco_previsto": 76611.92,
+        "regime_juros": "parado",
+        "retorno_log_previsto": -0.000104,
+        "servido_por": "b4e05f0beb43",
+        "variacao_prevista_pct": -0.0104,
+        "volatilidade_diaria_estimada_pct": 1.58
+    }
+}
+```
+
+
 
