@@ -292,5 +292,5 @@ resultado bem legal:
 }
 ```
 
-
+pronto!!! o projetp está nos containers bonitinhos e feitos. tem algumas coisas que eu não gostei que o modelo nem bate o naive, uma série temporal que simplesmente replica o dado passado, então para que o modelo seja mais robusto, deveria ter trabalhado mais nele.
 
