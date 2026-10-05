@@ -294,3 +294,24 @@ resultado bem legal:
 
 pronto!!! o projetp está nos containers bonitinhos e feitos. tem algumas coisas que eu não gostei que o modelo nem bate o naive, uma série temporal que simplesmente replica o dado passado, então para que o modelo seja mais robusto, deveria ter trabalhado mais nele.
 
+útima coisa que o claude me aconselhou é fazer esse seguinte teste: 
+```bash
+docker compose run --rm treino 2>&1 | grep RMSE
+docker compose run --rm treino 2>&1 | grep RMSE
+```
+
+isso vai ver se o treino é reprodutivel
+
+o resultado foi esse:
+```bash
+docker compose run --rm treino 2>&1 | grep RMSE
+[treino] naive              RMSE US$    1,969 | MAPE  1.61% | direção   0.0%
+[treino] ridge              RMSE US$    1,990 | MAPE  1.62% | direção  49.5%
+[treino] gradient_boosting  RMSE US$    2,165 | MAPE  1.75% | direção  48.3%
+[treino] escolhido: ridge (menor RMSE entre os que aprendem)
+[treino] naive              RMSE US$    1,969 | MAPE  1.61% | direção   0.0%
+[treino] ridge              RMSE US$    1,990 | MAPE  1.62% | direção  49.5%
+[treino] gradient_boosting  RMSE US$    2,165 | MAPE  1.75% | direção  48.3%
+[treino] escolhido: ridge (menor RMSE entre os que aprendem)
+```
+
